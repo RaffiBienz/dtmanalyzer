@@ -14,8 +14,8 @@ rasterOptions(tmpdir= ".../temp/",todisk=TRUE, progress="text")
 
 ##############################################################################################################################################################
 #### Import of DTM-Files ####
-dtm_kt <- raster("data/DTM_2019_Milan.tif") # Import DTM for whole area
-files <- list.files(path="data/DTM/",pattern="*.tif$") # DTM tiles 4x4km
+dtm_kt <- raster("data/DTM_2019_Milan.tif") # Import DTM for whole area. Used for data extraction by clipping extents.
+files <- list.files(path="data/DTM/",pattern="*.tif$") # DTM tiles 4x4km. They are only used to define the clipping extents 
 for(i in files) {assign(unlist(strsplit(i, "[.]"))[1], raster(paste("data/DTM/",i,sep=""))) } # Load Tiles
 raster_names <- unlist(strsplit(files,"[.]"))
 raster_names <- raster_names[raster_names!="tif"]
