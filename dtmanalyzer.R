@@ -2,6 +2,7 @@
 #### Calculate ground structure from DTM ####
 # Smooths the DTM and then substracts the original DTM. Suitable for finding strip roads in forests and other ground structures.
 # R.Bienz / 23.07.2019
+# Example data provided by Kanton of Aargau, 2021.
 ##############################################################################################################################################################
 library(imager)
 library(raster)
@@ -24,7 +25,7 @@ raster_names <- unlist(strsplit(files,"[.]")) # create name list
 raster_names <- raster_names[raster_names!="tif"]
 
 ##############################################################################################################################################################
-#### Calculate structure for each tile with overlap ####
+#### Calculate structure for each tile ####
 for(i in 1:length(raster_names)){
   temp <- eval(as.symbol(raster_names[i]))
 
