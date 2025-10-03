@@ -1,73 +1,89 @@
 ##############################################################################################################################################################
-#### Calculate ground structure from DTM ####
-# Smooths the DTM and then substracts the original DTM. Suitable for finding strip roads in forests and other ground structures.
-# R.Bienz / 23.07.2019
-# Example data provided by Kanton of Aargau, 2021.
+#### Calculate surface structure from DTM ####
+# Smooths the DTM and then substracts the original DTM. Suitable for finding skid trails in forests and other ground structures.
+# R.Bienz / 05.09.2025
 ##############################################################################################################################################################
+#### Setup ####
 library(imager)
-library(raster)
-library(rgdal)
+library(terra)
 
-wd <- getwd() # Define working directory
-setwd(wd)
+print(paste("Current working directory:",getwd()))
 
-dir.create("temp",showWarnings = F)
-dir.create("wd",showWarnings = F)
-dir.create("result",showWarnings = F)
+dir.create(paste0(getwd(),"/temp/"), recursive = T)
+terraOptions(tempdir= paste0(getwd(),"/temp/"))
 
-rasterOptions(tmpdir= paste0(wd,"/temp/"),todisk=TRUE, progress="text")
+path_out_tiles <- "results/groundstrucutre_tiles/"
+dir.create(path_out_tiles, recursive = T)
 
 ##############################################################################################################################################################
-#### Import DTM-Files ####
-files <- list.files(path="data",pattern="*.tif$") 
-for(i in files) {assign(unlist(strsplit(i, "[.]"))[1], raster(paste("data/",i,sep=""))) } # Load Tiles
-raster_names <- unlist(strsplit(files,"[.]")) # create name list
-raster_names <- raster_names[raster_names!="tif"]
+#### Import of DTM-Files ####
+path_tiles <- "data/"
+tile_files <- list.files(path_tiles, pattern = "\\.tif$", full.names = FALSE)
+print(paste("Number of files:",length(tile_files)))
 
 ##############################################################################################################################################################
 #### Calculate structure for each tile ####
-for(i in 1:length(raster_names)){
-  temp <- eval(as.symbol(raster_names[i]))
-
-  ### Convert to cimg ###
-  dtm_img <- as.cimg(t(matrix(temp[],ncol = ncol(temp),byrow = T)))
-  dtm_img[is.na(dtm_img)] <- 0
+process_tile <- function(tile_name, path_tiles, path_out_tiles) {
+  # Load the tile
+  tile_path <- paste0(path_tiles,tile_name)
+  output_path <- file.path(path_out_tiles, paste0("groundstr_",basename(tile_path)))
+  if (!file.exists(output_path)){
+    tile <- rast(tile_path)
   
-  ### Method: Smoothing surface and substract DTM ###
-  dtm_iso <- isoblur(dtm_img,3)
-  dtm_iso <- dtm_img-dtm_iso
-  dtm_iso[dtm_iso<(-1)] <- -1 # Set all values < -1 to -1
-  dtm_iso[dtm_iso>1] <- 1 # Set all values > 1 to 1
+    ### Convert to cimg ###
+    dtm_img <- as.cimg(t(matrix(tile[],ncol = ncol(tile),byrow = T)))
+    dtm_img[is.na(dtm_img)] <- 0
+    
+    ### Smoothing surface and substract DTM ###
+    dtm_iso <- isoblur(dtm_img,5)
+    dtm_iso <- dtm_img-dtm_iso
+    dtm_iso[dtm_iso<(-0.5)] <- -0.5 # Set all values < -1 to -1
+    dtm_iso[dtm_iso>0.5] <- 0.5 # Set all values > 1 to 1
+    
+    ### Convert to raster ###
+    difference <- rast(matrix(dtm_iso[],ncol = ncol(tile),byrow=T))
+    
+    ### Assign coordinate system and export ###
+    crs(difference) <- crs(tile)
+    ext(difference) <- ext(tile)
   
-  ### Convert back to raster ###
-  mag_ras <- raster(matrix(dtm_iso[],ncol = ncol(temp),byrow=T))
-  
-  ### Assign coordinate system and export ###
-  crs(mag_ras) <- crs(temp)
-  extent(mag_ras) <- extent(temp)
-  origin(mag_ras) <- c(0,0)
-  writeRaster(mag_ras,filename = paste("wd/",raster_names[i],"_diff.tif",sep=""),overwrite=T)
-  
-  print(paste(i,"/",length(raster_names)))
+    ### Rescale to values between 0 and 62
+    final_tile_res <- (difference+1) * 31
+    
+    # Save the processed tile
+    writeRaster(final_tile_res, output_path, overwrite = TRUE, datatype = "INT1U")
+  }
 }
 
-
+# Apply the processing to all tiles
+lapply(tile_files, function(x) {
+  message("Processing: ", x)
+  process_tile(x, path_tiles, path_out_tiles)
+})
 ##############################################################################################################################################################
 #### Read all tiles and build one file ####
-files_diff<-list.files(path="wd/",pattern="*.tif$")
-for(i in files_diff) {assign(unlist(strsplit(i, "[.]"))[1], raster(paste("wd/",i,sep=""))) } 
-diff_names <- unlist(strsplit(files_diff,"[.]"))
-diff_names <- diff_names[diff_names!="tif"]
+combine_rasters <- function(path_input, path_output){
+  files_diff<-list.files(path=path_input,pattern="*.tif$", full.names=T)
+  rlist <- list()
+  for (i in files_diff){
+    ras <- rast(i)
+    rlist[[length(rlist)+1]] <- ras
+  }
+  if (length(rlist)>0){
+    rsrc <- sprc(rlist)
+    mosaic(rsrc, filename=path_output, fun="max",datatype = "INT1U", overwrite=T)
+    print("All rasters combined.")
+  }  else { print("No rasters found.")}
+}
 
-raster_list <- list() 
-for (i in diff_names){
-  raster_list <- append(raster_list,eval(as.symbol(i)))}
-
-raster_list$fun <- mean
-mos <- do.call(mosaic, raster_list)
-writeRaster(mos,filename="result/dtm_diff_kt.tif",overwrite=T)
+combine_rasters(path_out_tiles, "results/groundstructure.tif")
 
 # delete temporary files
 unlink("temp", recursive = TRUE)
+
+
+
+
+
 
 
